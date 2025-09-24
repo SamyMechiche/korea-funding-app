@@ -46,18 +46,18 @@
           </form>
         </div>
         <div class="card">
-          <h2>Add Transaction</h2>
+          <h2>Add Expense</h2>
           <form id="txnForm" class="grid two gap">
             <label class="field">
-              <span class="label">Type</span>
-              <select id="txnType">
-                <option value="expense">Expense (Payment)</option>
-                <option value="income">Income (Withdrawal/Top-up)</option>
-              </select>
+              <span class="label">Amount</span>
+              <input id="txnAmount" type="number" step="1" min="0" placeholder="e.g. 15000 or 10.50" required />
             </label>
             <label class="field">
-              <span class="label">Amount (₩ KRW)</span>
-              <input id="txnAmount" type="number" step="1" min="0" placeholder="e.g. 15000" required />
+              <span class="label">Currency</span>
+              <select id="txnCurrency">
+                <option value="krw">KRW (₩)</option>
+                <option value="eur">EUR (€)</option>
+              </select>
             </label>
             <label class="field">
               <span class="label">Category</span>
@@ -79,13 +79,6 @@
       </section>
 
       <section class="grid three">
-        <div class="stat card ok">
-          <div class="muted">Total Income</div>
-          <div class="stat-values">
-            <div id="totalIncomeKrw" class="big">₩0</div>
-            <div id="totalIncomeEur" class="muted">€0.00</div>
-          </div>
-        </div>
         <div class="stat card warn">
           <div class="muted">Total Expenses</div>
           <div class="stat-values">
@@ -104,8 +97,13 @@
 
       <section class="card">
         <div class="list-header">
-          <h2>Transactions</h2>
+          <h2>Expenses</h2>
           <div class="list-actions">
+            <select id="sortSelect">
+              <option value="newest">Sort: Newest</option>
+              <option value="expenseAmountDesc">Sort: Amount (High → Low)</option>
+              <option value="categoryAsc">Sort: Category (A→Z)</option>
+            </select>
             <button id="exportBtn" class="btn btn-secondary">Export CSV</button>
             <input id="pdfDate" type="date" />
             <button id="pdfBtn" class="btn">Download Daily PDF</button>
@@ -117,7 +115,6 @@
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Type</th>
                 <th>Category</th>
                 <th class="right">KRW</th>
                 <th class="right">EUR</th>

@@ -7,7 +7,7 @@ let state = {
   budgetKrw: 0,
   rate: FALLBACK_RATE,
   rateUpdatedAt: null,
-  transactions: [] // { id, type: 'expense'|'income', amountKrw, category, notes, dateIso }
+  transactions: [] // { id, amountKrw, category, notes, dateIso }
 };
 
 // Utilities
@@ -33,7 +33,10 @@ function loadState() {
     if (typeof parsed.budgetKrw === 'number') state.budgetKrw = parsed.budgetKrw;
     if (typeof parsed.rate === 'number') state.rate = parsed.rate;
     if (parsed.rateUpdatedAt) state.rateUpdatedAt = parsed.rateUpdatedAt;
-    if (Array.isArray(parsed.transactions)) state.transactions = parsed.transactions;
+    if (Array.isArray(parsed.transactions)) state.transactions = parsed.transactions.map(t => {
+      // migrate: drop type if present
+      return { id: t.id, amountKrw: t.amountKrw, category: t.category, notes: t.notes, dateIso: t.dateIso };
+    });
   } catch (_) {}
 }
 
@@ -97,27 +100,36 @@ function renderBudgetEur() {
   byId('budgetEur').textContent = formatEUR(toEUR(state.budgetKrw));
 }
 
-// Transactions
+// Transactions (expenses only)
 function onTxnSubmit(e) {
   e.preventDefault();
-  const type = byId('txnType').value;
-  const amount = Math.floor(Number(byId('txnAmount').value || 0));
-  if (!amount || amount <= 0) return alert('Enter a valid amount in KRW');
+  const currency = (byId('txnCurrency')?.value || 'krw');
+  const amountInput = Number(byId('txnAmount').value || 0);
+  if (!amountInput || amountInput <= 0) return alert('Enter a valid amount');
+  let amountKrw = 0;
+  if (currency === 'eur') {
+    const rate = state.rate || FALLBACK_RATE;
+    amountKrw = Math.max(1, Math.round(amountInput / rate));
+  } else {
+    amountKrw = Math.max(1, Math.floor(amountInput));
+  }
   const category = byId('txnCategory').value.trim();
   const notes = byId('txnNotes').value.trim();
   const dateInput = byId('txnDate').value;
   const dateIso = dateInput ? new Date(dateInput).toISOString() : nowIso();
   const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random());
 
-  state.transactions.unshift({ id, type, amountKrw: amount, category, notes, dateIso });
+  state.transactions.unshift({ id, amountKrw, category, notes, dateIso });
   saveState();
   renderStats();
   renderRows();
   e.target.reset();
+  const curSel = byId('txnCurrency');
+  if (curSel) curSel.value = currency; // keep last used currency
 }
 
 function onDeleteTxn(id) {
-  if (!confirm('Delete this transaction?')) return;
+  if (!confirm('Delete this expense?')) return;
   state.transactions = state.transactions.filter(t => t.id !== id);
   saveState();
   renderStats();
@@ -142,7 +154,7 @@ function onEditTxn(id) {
 }
 
 function onClearAll() {
-  if (!confirm('Clear ALL data (budget + transactions)?')) return;
+  if (!confirm('Clear ALL data (budget + expenses)?')) return;
   state = { budgetKrw: 0, rate: state.rate || FALLBACK_RATE, rateUpdatedAt: state.rateUpdatedAt, transactions: [] };
   saveState();
   renderAll();
@@ -150,12 +162,11 @@ function onClearAll() {
 
 // Rendering
 function computeTotals() {
-  let income = 0, expenses = 0;
+  let expenses = 0;
   for (const t of state.transactions) {
-    if (t.type === 'income') income += t.amountKrw;
-    else expenses += t.amountKrw;
+    expenses += t.amountKrw;
   }
-  return { income, expenses, remaining: state.budgetKrw + income - expenses };
+  return { expenses, remaining: state.budgetKrw - expenses };
 }
 
 function renderRate() {
@@ -164,13 +175,32 @@ function renderRate() {
   byId('rateUpdatedAt').textContent = `Updated: ${ts}`;
 }
 
+function getSortedTransactions() {
+  const select = byId('sortSelect');
+  const mode = select ? select.value : 'newest';
+  const arr = [...state.transactions];
+  if (mode === 'expenseAmountDesc') {
+    return arr.sort((a, b) => b.amountKrw - a.amountKrw);
+  }
+  if (mode === 'categoryAsc') {
+    return arr.sort((a, b) => {
+      const ac = (a.category || '');
+      const bc = (b.category || '');
+      if (ac.toLowerCase() < bc.toLowerCase()) return -1;
+      if (ac.toLowerCase() > bc.toLowerCase()) return 1;
+      // tie-breaker: newest first
+      return new Date(b.dateIso) - new Date(a.dateIso);
+    });
+  }
+  // newest first (default)
+  return arr.sort((a, b) => new Date(b.dateIso) - new Date(a.dateIso));
+}
+
 function renderStats() {
-  const { income, expenses, remaining } = computeTotals();
-  byId('totalIncomeKrw').textContent = formatKRW(income);
+  const { expenses, remaining } = computeTotals();
   byId('totalExpensesKrw').textContent = formatKRW(expenses);
   byId('remainingKrw').textContent = formatKRW(remaining);
 
-  byId('totalIncomeEur').textContent = formatEUR(toEUR(income));
   byId('totalExpensesEur').textContent = formatEUR(toEUR(expenses));
   byId('remainingEur').textContent = formatEUR(toEUR(remaining));
 }
@@ -178,24 +208,24 @@ function renderStats() {
 function renderRows() {
   const tbody = byId('txnTbody');
   tbody.innerHTML = '';
-  if (state.transactions.length === 0) {
+  const txns = getSortedTransactions();
+  if (txns.length === 0) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 7;
+    td.colSpan = 6;
     td.className = 'muted';
-    td.textContent = 'No transactions yet';
+    td.textContent = 'No expenses yet';
     tr.appendChild(td);
     tbody.appendChild(tr);
     return;
   }
-  for (const t of state.transactions) {
+  for (const t of txns) {
     const tr = document.createElement('tr');
     const date = new Date(t.dateIso);
     const dateStr = date.toLocaleDateString();
     tr.innerHTML = `
       <td>${dateStr}</td>
-      <td><span class="chip" style="border-color:${t.type==='income' ? '#22c55e' : '#ef4444'}">${t.type}</span></td>
-      <td>${t.category ? `<span class="chip">${escapeHtml(t.category)}</span>` : ''}</td>
+      <td>${t.category ? `<span class=\"chip\">${escapeHtml(t.category)}</span>` : ''}</td>
       <td class="right">${formatKRW(t.amountKrw)}</td>
       <td class="right">${formatEUR(toEUR(t.amountKrw))}</td>
       <td>${escapeHtml(t.notes || '')}</td>
@@ -219,10 +249,9 @@ function escapeHtml(str) {
 
 // Export CSV
 function exportCsv() {
-  const headers = ['date', 'type', 'category', 'amount_krw', 'amount_eur', 'notes'];
+  const headers = ['date', 'category', 'amount_krw', 'amount_eur', 'notes'];
   const rows = state.transactions.map(t => [
     new Date(t.dateIso).toISOString().slice(0,10),
-    t.type,
     t.category || '',
     t.amountKrw,
     (toEUR(t.amountKrw)).toFixed(2),
@@ -251,11 +280,11 @@ function downloadDailyPdf() {
     return d >= dayStart && d <= dayEnd;
   });
 
-  let income = 0, expenses = 0;
+  let expenses = 0;
   for (const t of daily) {
-    if (t.type === 'income') income += t.amountKrw; else expenses += t.amountKrw;
+    expenses += t.amountKrw;
   }
-  const totalEur = toEUR(expenses);
+  const expensesEur = toEUR(expenses);
 
   // jsPDF
   const { jsPDF } = window.jspdf || {};
@@ -275,21 +304,18 @@ function downloadDailyPdf() {
   y += 6;
   doc.text(`Rate: ${state.rate.toFixed(6)} EUR per KRW`, margin, y);
   y += 6;
-  doc.text(`Income (KRW): ${income.toLocaleString()}`, margin, y);
-  y += 6;
   doc.text(`Expenses (KRW): ${expenses.toLocaleString()}`, margin, y);
   y += 6;
-  doc.text(`Expenses (EUR): ${totalEur.toFixed(2)}`, margin, y);
+  doc.text(`Expenses (EUR): ${expensesEur.toFixed(2)}`, margin, y);
   y += 10;
 
   // table header
   doc.setFontSize(12);
-  doc.text('Transactions', margin, y);
+  doc.text('Expenses', margin, y);
   y += 6;
   doc.setFontSize(10);
   doc.text('Time', margin, y);
-  doc.text('Type', margin + 30, y);
-  doc.text('Category', margin + 60, y);
+  doc.text('Category', margin + 40, y);
   doc.text('KRW', margin + 110, y, { align: 'right' });
   doc.text('EUR', margin + 180 - margin, y, { align: 'right' });
   y += 5;
@@ -305,8 +331,7 @@ function downloadDailyPdf() {
 
     if (y > 270) { doc.addPage(); y = margin; }
     doc.text(time, margin, y);
-    doc.text(t.type, margin + 30, y);
-    doc.text((t.category || '').substring(0, 20), margin + 60, y);
+    doc.text((t.category || '').substring(0, 20), margin + 40, y);
     doc.text(krwStr, 120 + 10, y, { align: 'right' });
     doc.text(eurStr, 180 - margin, y, { align: 'right' });
     y += 6;
@@ -350,6 +375,7 @@ function init() {
     saveState();
     renderBudgetEur();
     renderStats();
+    renderRows();
   });
   byId('txnForm').addEventListener('submit', onTxnSubmit);
   byId('refreshRateBtn').addEventListener('click', refreshRate);
@@ -357,6 +383,8 @@ function init() {
   byId('txnTbody').addEventListener('click', onTableClick);
   byId('clearBtn').addEventListener('click', onClearAll);
   byId('exportBtn').addEventListener('click', exportCsv);
+  const sortSelect = byId('sortSelect');
+  if (sortSelect) sortSelect.addEventListener('change', renderRows);
   // PDF
   const pdfToday = new Date().toISOString().slice(0,10);
   const pdfDate = byId('pdfDate');
