@@ -370,6 +370,11 @@ function init() {
   if (!state.rateUpdatedAt) {
     refreshRate().catch(() => {});
   }
+
+  // Register service worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
 }
 
 if (document.readyState === 'loading') {
