@@ -18,18 +18,6 @@ A simple, pretty, offline-friendly budgeting app to track your Korea trip.
 
 No server or build steps required.
 
-## PWA (Installable + Offline)
-
-- The app includes a Web App Manifest and a Service Worker.
-- You can install it to your home screen/desktop from supported browsers:
-  - On Chrome/Edge: open `index.html` via `http(s)` (or a local server), then use "Install App"/"Add to Home Screen" prompt or menu.
-- Works offline: core assets are cached. Your data is stored locally and persists between sessions on the same device/browser.
-
-Notes:
-
-- Most browsers require serving files over `https` or from `http://localhost` to enable service workers. If opening via `file://`, install prompts may not appear, but offline caching will still function once served from a local server.
-- Clearing site data removes your stored budget/transactions.
-
 ## Notes
 
 - Live rates are fetched from `exchangerate.host`. If it fails, the app uses the last saved or a fallback rate (~1 EUR ≈ 1500 KRW).
